@@ -230,7 +230,7 @@ module Integrations
 
 		  elsif message.object_kind == "issue" && %w[close reopen].include?(message.action)
 		    action_emoji = message.action == "close" ? "🔒" : "🔓"
-		    state_text = message.action == "close" ? "fermée" : "réouverte"
+		    state_text = message.action == "close" ? "closed" : "reopen"
 
 			formatted_text = <<~HTML
 			  #{user_avatar_html} <b>#{action_emoji} Issue #{state_text}:</b> <a href="#{message.issue_url}">#{message.title}</a><br>
