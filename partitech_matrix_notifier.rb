@@ -11,7 +11,7 @@ module Integrations
 
     field :hostname,
       section: SECTION_TYPE_CONNECTION,
-      help: 'Custom hostname of the Matrix server. The default value is `https://matrix-client.matrix.org`.',
+      help: 'Custom hostname of the Matrix server. The default value is https://matrix-client.matrix.org.',
       placeholder: 'https://matrix-client.matrix.org',
       exposes_secrets: true,
       required: false
@@ -22,7 +22,7 @@ module Integrations
       non_empty_password_title: -> { s_('MatrixIntegration|New token') },
       non_empty_password_help: -> { s_('MatrixIntegration|Leave blank to use your current token.') },
       placeholder: 'syt-zyx57W2v1u123ew11',
-      description: -> { _('The Matrix access token (for example, `syt-zyx57W2v1u123ew11`).') },
+      description: -> { _('The Matrix access token (for example, syt-zyx57W2v1u123ew11).') },
       exposes_secrets: true,
       is_secret: true,
       required: true
@@ -31,7 +31,7 @@ module Integrations
       title: 'Room identifier',
       section: SECTION_TYPE_CONFIGURATION,
       help: -> {
-        _("Unique identifier for the target room (in the format `!qPKKM111FFKKsfoCVy:matrix.org`).")
+        _("Unique identifier for the target room (in the format !qPKKM111FFKKsfoCVy:matrix.org).")
       },
       placeholder: 'room ID',
       required: true
@@ -47,8 +47,8 @@ module Integrations
       section: SECTION_TYPE_CONFIGURATION,
       title: -> { s_('Integrations|Branches for which notifications are to be sent') },
       description: -> {
-                     _('Branches to send notifications for. Valid options are `all`, `default`, `protected`, ' \
-                       'and `default_and_protected`. The default value is `default`.')
+                     _('Branches to send notifications for. Valid options are all, default, protected, ' \
+                       'and default_and_protected. The default value is default.')
                    },
       choices: -> { branch_choices }
 
@@ -109,11 +109,11 @@ module Integrations
 		json_response = JSON.parse(response.body)
 		json_response["content_uri"] # Renvoie l'URL Matrix de l'image
 	      else
-		puts "Failed to upload avatar to Matrix: #{response.body}"
+		puts "Échec de l'upload de l'avatar sur Matrix : #{response.body}"
 		nil
 	      end
 	    rescue => e
-	      puts "Error uploading avatar: #{e.message}"
+	      puts "Erreur lors de l'upload de l'avatar : #{e.message}"
 	      nil
 	    end
 	  end
@@ -155,18 +155,105 @@ module Integrations
 	      #{commit_list}
 	      🔗 <a href="#{message.project_url}/-/compare/#{message.before}...#{message.after}">View the difference</a>
 	    HTML
+ 	  elsif message.is_a?(Integrations::ChatMessage::MergeMessage)
+		action_emoji = message.action == "close" ? "🔴 Closed" : "🟢 Reopened"
+
+		formatted_text = <<~HTML
+		  #{user_avatar_html} <b>🔄 Merge Request #{action_emoji} :</b> <a href="#{message.project_url}/-/merge_requests/#{message.merge_request_iid}">#{message.title}</a><br>
+		  <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
+		  <b>Author:</b> #{message.user_name}<br>
+		  <b>🔀 From:</b> #{message.source_branch} → #{message.target_branch}<br>
+		  🔗 <a href="#{message.project_url}/-/merge_requests/#{message.merge_request_iid}">View Merge Request</a>
+		HTML
+			
+ 	  elsif message.is_a?(Integrations::ChatMessage::MergeMessage)
+ 	        pipeline_status = message.status.capitalize
+		status_emoji = message.status == "success" ? "✅" : "❌"
+
+		formatted_text = <<~HTML
+		  #{user_avatar_html} <b>#{status_emoji} Pipeline #{pipeline_status} :</b> <a href="#{message.pipeline_url}">##{message.pipeline_id}</a><br>
+		  <b>Projet :</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
+		  <b>Auteur :</b> #{message.user_name}<br>
+		  🔗 <a href="#{message.pipeline_url}">Voir la pipeline</a>
+		HTML
+ 	  
+	  elsif message.is_a?(Integrations::ChatMessage::WikiPageMessage)
+	  		message_debug = JSON.pretty_generate(message.as_json) rescue message.inspect
+			formatted_text = case message.action
+			  when "created"
+				<<~HTML
+				  #{user_avatar_html} <b>📖 New Wiki Page Created:</b> <a href="#{message.wiki_page_url}">#{message.title}</a><br>
+				  <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
+				  <b>Author:</b> #{message.user_name}<br>
+				  <b>📝 Description:</b> #{message.description || "No description"}<br>
+				  🔗 <a href="#{message.wiki_page_url}">View Wiki Page</a>
+				HTML
+
+			  when "edited"
+				<<~HTML
+				  #{user_avatar_html} <b>📖 Wiki Page Updated:</b> <a href="#{message.wiki_page_url}">#{message.title}</a><br>
+				  <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
+				  <b>Author:</b> #{message.user_name}<br>
+				  <b>📝 Description:</b> #{message.description || "No description"}<br>
+				  🔗 <a href="#{message.wiki_page_url}">View Wiki Page</a><br>
+				  🔄 <a href="#{message.diff_url}">View Changes</a>
+				HTML
+
+			  when "deleted", nil
+				<<~HTML
+				  #{user_avatar_html} <b>❌ Wiki Page Deleted:</b> #{message.title}<br>
+				  <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
+				  <b>Author:</b> #{message.user_name}<br>
+				  🔗 <a href="#{message.wiki_page_url}">(Residual link to the page)</a><br>
+				  🔄 <a href="#{message.diff_url}">View changes before deletion</a>
+				HTML
+
+			  else
+				<<~HTML
+				  #{user_avatar_html} <b>📖 Unknown Activity on a Wiki Page:</b> <a href="#{message.wiki_page_url}">#{message.title}</a><br>
+				  <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
+				  <b>Author:</b> #{message.user_name}<br>
+				  <b>📝 Description:</b> #{message.description || "No description"}<br>
+				  🔗 <a href="#{message.wiki_page_url}">View Wiki Page</a>
+				HTML
+			end
 
 	  else
-	    formatted_text = <<~HTML
-	      #{user_avatar_html} <b>🚀 New activity in #{message.project_name}</b><br>
-	      🔗 <a href="#{message.project_url}">View on GitLab</a>
-	    HTML
+		  if message.object_kind == "issue" && message.action == "open"
+			formatted_text = <<~HTML
+			  #{user_avatar_html} <b>🆕 New Issue Opened:</b> <a href="#{message.issue_url}">#{message.title}</a><br>
+			  <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
+			  <b>Author:</b> #{message.user_name}<br>
+			  <b>📝 Description:</b> #{message.description}<br>
+			  🔗 <a href="#{message.issue_url}">View Issue</a>
+			HTML
+
+		  elsif message.object_kind == "issue" && %w[close reopen].include?(message.action)
+		    action_emoji = message.action == "close" ? "🔒" : "🔓"
+		    state_text = message.action == "close" ? "fermée" : "réouverte"
+
+			formatted_text = <<~HTML
+			  #{user_avatar_html} <b>#{action_emoji} Issue #{state_text}:</b> <a href="#{message.issue_url}">#{message.title}</a><br>
+			  <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
+			  <b>Author:</b> #{message.user_name}<br>
+			  <b>📝 Description:</b> #{message.description}<br>
+			  🔗 <a href="#{message.issue_url}">View Issue</a>
+			HTML
+		  else
+			# 🔍 Debug for any other unknown message type
+			message_debug = JSON.pretty_generate(message.as_json) rescue message.inspect
+			formatted_text = <<~HTML
+			  #{user_avatar_html} <b>🚀 New Unhandled Activity in #{message.project_name}</b><br>
+			  🔗 <a href="#{message.project_url}">View on GitLab</a><br>
+			  <pre>#{message_debug}</pre>
+			HTML
+		  end
 	  end
 
-	  # ✅ Remove HTML tags for plain text version
+	  # ✅ Remove HTML tags for the plain text version
 	  plain_text = formatted_text.gsub(/<\/?[^>]*>/, '')
 
-	  # ✅ Construct the message for Matrix
+	  # ✅ Build the message for Matrix
 	  body = {
 	    body: plain_text,
 	    msgtype: 'm.notice',
