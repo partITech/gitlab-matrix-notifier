@@ -2,6 +2,7 @@
 require 'open-uri'
 require 'base64'
 require 'json'
+require 'commonmarker'
 
 module Integrations
   class Matrix < Integration
@@ -123,11 +124,12 @@ module Integrations
 	  user_avatar_html = matrix_avatar_url ? "<img src='#{matrix_avatar_url}' width='32' height='32' style='border-radius: 50%;'>" : ""
 
 	  if message.is_a?(Integrations::ChatMessage::NoteMessage)
+	    message_description = markdown_to_html(message.note)
 	    formatted_text = <<~HTML
 	      #{user_avatar_html} <b>📌 New comment on #{message.target}</b><br>
 	      <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
 	      <b>Author:</b> #{message.user_name}<br>
-	      <b>📝 Comment:</b> #{message.note}<br>
+	      <b>📝 Comment:</b> #{message_description}<br>
 	      🔗 <a href="#{message.note_url}">View on GitLab</a>
 	    HTML
 
@@ -166,35 +168,30 @@ module Integrations
 		  🔗 <a href="#{message.project_url}/-/merge_requests/#{message.merge_request_iid}">View Merge Request</a>
 		HTML
 			
- 	  elsif message.is_a?(Integrations::ChatMessage::MergeMessage)
- 	        pipeline_status = message.status.capitalize
-		status_emoji = message.status == "success" ? "✅" : "❌"
 
-		formatted_text = <<~HTML
-		  #{user_avatar_html} <b>#{status_emoji} Pipeline #{pipeline_status} :</b> <a href="#{message.pipeline_url}">##{message.pipeline_id}</a><br>
-		  <b>Projet :</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
-		  <b>Auteur :</b> #{message.user_name}<br>
-		  🔗 <a href="#{message.pipeline_url}">Voir la pipeline</a>
-		HTML
  	  
 	  elsif message.is_a?(Integrations::ChatMessage::WikiPageMessage)
 	  		message_debug = JSON.pretty_generate(message.as_json) rescue message.inspect
 			formatted_text = case message.action
+			
+			
 			  when "created"
+			  	message_description = markdown_to_html(message.description)
 				<<~HTML
 				  #{user_avatar_html} <b>📖 New Wiki Page Created:</b> <a href="#{message.wiki_page_url}">#{message.title}</a><br>
 				  <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
 				  <b>Author:</b> #{message.user_name}<br>
-				  <b>📝 Description:</b> #{message.description || "No description"}<br>
+				  <b>📝 Description:</b> #{message_description || "No description"}<br>
 				  🔗 <a href="#{message.wiki_page_url}">View Wiki Page</a>
 				HTML
 
 			  when "edited"
+			  	message_description = markdown_to_html(message.description)
 				<<~HTML
 				  #{user_avatar_html} <b>📖 Wiki Page Updated:</b> <a href="#{message.wiki_page_url}">#{message.title}</a><br>
 				  <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
 				  <b>Author:</b> #{message.user_name}<br>
-				  <b>📝 Description:</b> #{message.description || "No description"}<br>
+				  <b>📝 Description:</b> #{message_description || "No description"}<br>
 				  🔗 <a href="#{message.wiki_page_url}">View Wiki Page</a><br>
 				  🔄 <a href="#{message.diff_url}">View Changes</a>
 				HTML
@@ -209,22 +206,24 @@ module Integrations
 				HTML
 
 			  else
+			  	message_description = markdown_to_html(message.description)
 				<<~HTML
 				  #{user_avatar_html} <b>📖 Unknown Activity on a Wiki Page:</b> <a href="#{message.wiki_page_url}">#{message.title}</a><br>
 				  <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
 				  <b>Author:</b> #{message.user_name}<br>
-				  <b>📝 Description:</b> #{message.description || "No description"}<br>
+				  <b>📝 Description:</b> #{message_description || "No description"}<br>
 				  🔗 <a href="#{message.wiki_page_url}">View Wiki Page</a>
 				HTML
 			end
 
 	  else
 		  if message.object_kind == "issue" && message.action == "open"
+		  	message_description = markdown_to_html(message.description)
 			formatted_text = <<~HTML
 			  #{user_avatar_html} <b>🆕 New Issue Opened:</b> <a href="#{message.issue_url}">#{message.title}</a><br>
 			  <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
 			  <b>Author:</b> #{message.user_name}<br>
-			  <b>📝 Description:</b> #{message.description}<br>
+			  <b>📝 Description:</b> #{message_description}<br>
 			  🔗 <a href="#{message.issue_url}">View Issue</a>
 			HTML
 
@@ -232,13 +231,24 @@ module Integrations
 		    action_emoji = message.action == "close" ? "🔒" : "🔓"
 		    state_text = message.action == "close" ? "closed" : "reopen"
 
-			formatted_text = <<~HTML
+		    if message.action == "close"
+		    	  formatted_text = <<~HTML
 			  #{user_avatar_html} <b>#{action_emoji} Issue #{state_text}:</b> <a href="#{message.issue_url}">#{message.title}</a><br>
 			  <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
 			  <b>Author:</b> #{message.user_name}<br>
-			  <b>📝 Description:</b> #{message.description}<br>
 			  🔗 <a href="#{message.issue_url}">View Issue</a>
 			HTML
+		    else
+		    	  message_description = markdown_to_html(message.description)
+		    	  formatted_text = <<~HTML
+			  #{user_avatar_html} <b>#{action_emoji} Issue #{state_text}:</b> <a href="#{message.issue_url}">#{message.title}</a><br>
+			  <b>Project:</b> <a href="#{message.project_url}">#{message.project_name}</a><br>
+			  <b>Author:</b> #{message.user_name}<br>
+			  <b>📝 Description:</b> #{message_description}<br>
+			  🔗 <a href="#{message.issue_url}">View Issue</a> 
+			HTML
+		    end
+
 		  else
 			# 🔍 Debug for any other unknown message type
 			message_debug = JSON.pretty_generate(message.as_json) rescue message.inspect
@@ -271,11 +281,62 @@ module Integrations
       url.path << (Time.current.to_f * 1000).round.to_s
       response = Gitlab::HTTP.put(url, headers: header, body: Gitlab::Json.dump(body))
 
+	
+
       response if response.success?
     end
 
     def custom_data(data)
       super(data).merge(markdown: true)
     end
+    
+    
+    
+    
+    
+	# Convertit Markdown to HTML
+	def markdown_to_html(text)
+	  return "" if text.blank?
+
+	  html = CommonMarker.render_html(text, :DEFAULT)
+
+	  # Corrige les images locales déjà mal converties par GitLab
+	  html.gsub!(%r{<img\s+[^>]*src=["'](https://git\.partitech\.com/[^"']+/uploads/[^"']+)["'][^>]*>}i) do
+	    wrong_url = Regexp.last_match(1)
+	    # On extrait uniquement le /uploads/.... pour reconstruire l'URL propre
+	    upload_path = wrong_url.match(%r{/uploads/[^"']+})[0]
+	    corrected_url = "https://git.partitech.com/-/project/#{project.id}#{upload_path}"
+	    "<a href=\"#{corrected_url}\">📎 Download image</a>"
+	  end
+
+	  # Corrige les images externes (http/https) → lien cliquable
+	  html.gsub!(%r{<img\s+[^>]*src=["'](https?://[^"']+)["'][^>]*>}i) do
+	    img_url = Regexp.last_match(1)
+	    "<a href=\"#{img_url}\">📎 Download image</a>"
+	  end
+
+	  html
+	end
+
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
   end
 end
